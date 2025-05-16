@@ -1,0 +1,71 @@
+# Service Zookeeper (Dépendance pour Kafka)
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    hostname: zookeeper
+    container_name: zookeeper-dev
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - kafka-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka
+    container_name: kafka-dev
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"   # kafka Port for internal communication  
+      - "9093:9093"
+    
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093 #Inside: kafka:9092, Outside: localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # For cluster with one node
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1 
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    
+    networks:
+      - kafka-network
+
+  logs-kafka-producer-api:
+    container_name: logs-kafka-producer-api-dev
+    build:
+      context: .
+      dockerfile: ./logs-kafka-producer/Dockerfile
+    ports:
+      - "5150:8080" # Map container port (HTTPS-8080) to host port (5150)
+       #- "7201:8081" # Map container port (HTTPS-8081) to host port (7201)
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_URLS: "http://+:8080"
+      KafkaSettings__ServerIpAddress: "kafka:9092"
+    depends_on:
+      - kafka
+    volumes:
+      - ./logs-kafka-producer:/app/src/logs-kafka-producer
+      - ~/.aspnet/https:/root/.aspnet/https:ro # Mount HTTPS certificate
+      - ~/.microsoft/usersecrets:/root/.microsoft/usersecrets:ro # Mount user secrets
+    
+    networks:
+      - kafka-network
+  
+networks:
+  kafka-network:
+    driver: bridge
+
+volumes:
+  kafka_data:
